@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Bug Hunt X</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #111;
+      font-family: monospace;
+      color: white;
+    }
+
+    .bug {
+      width: 40px;
+      height: 40px;
+      background: url('https://cdn-icons-png.flaticon.com/512/3039/3039430.png') no-repeat center/contain;
+      position: absolute;
+      z-index: 10;
+      cursor: pointer;
+      transition: transform 1s linear;
+    }
+
+    .boss {
+      width: 80px;
+      height: 80px;
+      background: url('https://upload.wikimedia.org/wikipedia/commons/3/3d/Spider_cartoon.svg') no-repeat center/contain;
+      z-index: 20;
+    }
+
+    .perk {
+      width: 40px;
+      height: 40px;
+      background: yellow;
+      border-radius: 50%;
+      position: absolute;
+      z-index: 15;
+      text-align: center;
+      line-height: 40px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .splat {
+      position: absolute;
+      font-size: 2rem;
+      color: red;
+      pointer-events: none;
+      z-index: 100;
+      animation: splatAnim 0.6s ease-out forwards;
+    }
+
+    @keyframes splatAnim {
+      0% { transform: scale(0); opacity: 1; }
+      100% { transform: scale(1.5); opacity: 0; }
+    }
+
+    .scoreboard, .timer, .highscore {
+      position: fixed;
+      top: 10px;
+      font-size: 1rem;
+      z-index: 1000;
+    }
+
+    .scoreboard { left: 10px; }
+    .timer { left: 120px; }
+    .highscore { right: 10px; }
+
+    #game-over {
+      position: fixed;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 2rem;
+      text-align: center;
+      z-index: 2000;
+      display: none;
+    }
+
+    #start-btn {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 1rem 2rem;
+      background: limegreen;
+      color: #000;
+      font-weight: bold;
+      font-size: 1rem;
+      cursor: pointer;
+      z-index: 999;
+      border: none;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="scoreboard">Score: <span id="score">0</span></div>
+  <div class="timer">Time: <span id="time">30</span>s</div>
+  <div class="highscore">High Score: <span id="high">0</span></div>
+
+  <div id="game-over">
+    🪲 GAME OVER 🪲<br>
+    Your Score: <span id="final-score">0</span><br>
+    <button onclick="location.reload()">Play Again</button>
+  </div>
+
+  <button id="start-btn">Start Bug Hunt</button>
+
+  <audio id="squish" src="https://www.soundjay.com/human/sounds/slap-1.mp3"></audio>
+
+  <script>
+    let score = 0;
+    let timeLeft = 30;
+    let gameRunning = false;
+    let sprayActive = false;
+    let freezeActive = false;
+    const scoreEl = document.getElementById("score");
+    const timeEl = document.getElementById("time");
+    const highScoreEl = document.getElementById("high");
+    const squishSound = document.getElementById("squish");
+
+    let highScore = localStorage.getItem("bugHighScore") || 0;
+    highScoreEl.textContent = highScore;
+
+    function spawnBug() {
+      if (!gameRunning) return;
+
+      const bug = document.createElement('div');
+      const isBoss = Math.random() < 0.1;
+      const hp = isBoss ? 10 : 2;
+      bug.classList.add('bug');
+      if (isBoss) bug.classList.add('boss');
+
+      bug.dataset.hp = hp;
+      bug.style.top = Math.random() * (window.innerHeight - 100) + 'px';
+      bug.style.left = Math.random() * (window.innerWidth - 100) + 'px';
+
+      document.body.appendChild(bug);
+
+      const moveBug = () => {
+        if (!document.body.contains(bug)) return;
+        if (freezeActive) return;
+        const dx = Math.random() * 200 - 100;
+        const dy = Math.random() * 200 - 100;
+        bug.style.transform = `translate(${dx}px, ${dy}px) rotate(${Math.random() * 360}deg)`;
+      }
+
+      const moveInterval = setInterval(() => {
+        if (!document.body.contains(bug)) return clearInterval(moveInterval);
+        moveBug();
+      }, 1200);
+
+      bug.addEventListener("click", () => {
+        if (!gameRunning) return;
+        let hp = parseInt(bug.dataset.hp);
+        hp -= sprayActive ? 2 : 1;
+        bug.dataset.hp = hp;
+
+        if (hp <= 0) {
+          squishSound.currentTime = 0;
+          squishSound.play();
+          const points = isBoss ? 10 : 1;
+          score += points;
+          scoreEl.textContent = score;
+          showSplat(bug.style.top, bug.style.left);
+          bug.remove();
+        }
+      });
+
+      setTimeout(() => bug.remove(), isBoss ? 8000 : 5000);
+    }
+
+    function showSplat(top, left) {
+      const splat = document.createElement("div");
+      splat.className = "splat";
+      splat.innerText = "💥";
+      splat.style.top = top;
+      splat.style.left = left;
+      document.body.appendChild(splat);
+      setTimeout(() => splat.remove(), 600);
+    }
+
+    function spawnPerk() {
+      if (!gameRunning) return;
+
+      const perks = ["🧊", "💣", "🔫"];
+      const types = ["freeze", "bomb", "spray"];
+      const i = Math.floor(Math.random() * 3);
+
+      const perk = document.createElement("div");
+      perk.className = "perk";
+      perk.innerText = perks[i];
+      perk.dataset.type = types[i];
+
+      perk.style.top = Math.random() * (window.innerHeight - 50) + "px";
+      perk.style.left = Math.random() * (window.innerWidth - 50) + "px";
+      document.body.appendChild(perk);
+
+      perk.addEventListener("click", () => {
+        if (perk.dataset.type === "freeze") freezeBugs();
+        if (perk.dataset.type === "bomb") bombBugs();
+        if (perk.dataset.type === "spray") sprayMode();
+        perk.remove();
+      });
+
+      setTimeout(() => perk.remove(), 5000);
+    }
+
+    function startGame() {
+      gameRunning = true;
+      document.getElementById("start-btn").style.display = "none";
+
+      const bugSpawner = setInterval(() => {
+        if (!gameRunning) return clearInterval(bugSpawner);
+        spawnBug();
+      }, 300);
+
+      const perkSpawner = setInterval(() => {
+        if (!gameRunning) return clearInterval(perkSpawner);
+        spawnPerk();
+      }, 5000);
+
+      const timer = setInterval(() => {
+        if (!gameRunning) return clearInterval(timer);
+        timeLeft--;
+        timeEl.textContent = timeLeft;
+        if (timeLeft <= 0) {
+          endGame();
+          clearInterval(timer);
+        }
+      }, 1000);
+    }
+
+    function endGame() {
+      gameRunning = false;
+      document.getElementById("final-score").textContent = score;
+      document.getElementById("game-over").style.display = "block";
+
+      if (score > highScore) {
+        localStorage.setItem("bugHighScore", score);
+        highScoreEl.textContent = score;
+      }
+    }
+
+    function freezeBugs() {
+      freezeActive = true;
+      document.body.style.filter = "grayscale(1)";
+      setTimeout(() => {
+        freezeActive = false;
+        document.body.style.filter = "none";
+      }, 3000);
+    }
+
+    function bombBugs() {
+      const bugs = document.querySelectorAll('.bug');
+      bugs.forEach(bug => {
+        showSplat(bug.style.top, bug.style.left);
+        bug.remove();
+        score++;
+        scoreEl.textContent = score;
+      });
+    }
+
+    function sprayMode() {
+      if (sprayActive) return;
+      sprayActive = true;
+      document.body.style.background = "darkred";
+      setTimeout(() => {
+        sprayActive = false;
+        document.body.style.background = "#111";
+      }, 5000);
+    }
+
+    document.getElementById("start-btn").addEventListener("click", startGame);
+  </script>
+</body>
+</html>
